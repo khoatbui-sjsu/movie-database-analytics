@@ -1,0 +1,17 @@
+SET FOREIGN_KEY_CHECKS = 0;
+
+TRUNCATE TABLE MovieSpokenLanguage;
+TRUNCATE TABLE MovieKeyword;
+TRUNCATE TABLE MovieProductionCountry;
+TRUNCATE TABLE MovieProductionCompany;
+TRUNCATE TABLE MovieGenre;
+
+TRUNCATE TABLE Keywords;
+TRUNCATE TABLE Country;
+TRUNCATE TABLE ProductionCompany;
+TRUNCATE TABLE Genres;
+TRUNCATE TABLE Languages;
+
+TRUNCATE TABLE Movies;
+
+SET FOREIGN_KEY_CHECKS = 1;
