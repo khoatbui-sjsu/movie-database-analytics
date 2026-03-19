@@ -1,12 +1,11 @@
 import argparse
-
 import pandas as pd
 import mysql.connector
 
 DB = {
     "host": "localhost",
     "user": "root",
-    "password": "101188",
+    "password": "25252525",
     "database": "TMDBMovie"
 }
 
@@ -133,7 +132,7 @@ def ensure_lookup(cur, name, table, cache, col_name):
 
 def insert_movie(cur, caches, row):
     lang = row.get("original_language")
-    if pd.notna(lang) and lang != "":
+    if lang is not None and str(lang).strip() != "":
         lang = ensure_language(cur, caches, lang)
     else:
         lang = None
@@ -150,21 +149,21 @@ def insert_movie(cur, caches, row):
     data = (
         int(row["id"]),
         row.get("title"),
-        float(row["vote_average"]) if not pd.isna(row.get("vote_average")) else None,
-        int(row["vote_count"]) if not pd.isna(row.get("vote_count")) else None,
+        float(row["vote_average"]) if row.get("vote_average") is not None else None,
+        int(row["vote_count"]) if row.get("vote_count") is not None else None,
         row.get("status"),
-        row.get("release_date") if not pd.isna(row.get("release_date")) else None,
-        float(row["revenue"]) if not pd.isna(row.get("revenue")) else None,
-        int(row["runtime"]) if not pd.isna(row.get("runtime")) else None,
-        bool(row["adult"]) if not pd.isna(row.get("adult")) else None,
+        row.get("release_date"),
+        float(row["revenue"]) if row.get("revenue") is not None else None,
+        int(row["runtime"]) if row.get("runtime") is not None else None,
+        bool(row["adult"]) if row.get("adult") is not None else None,
         row.get("backdrop_path"),
-        int(row["budget"]) if not pd.isna(row.get("budget")) else None,
+        int(row["budget"]) if row.get("budget") is not None else None,
         row.get("homepage"),
         row.get("imdb_id"),
         lang,
         row.get("original_title"),
         row.get("overview"),
-        float(row["popularity"]) if not pd.isna(row.get("popularity")) else None,
+        float(row["popularity"]) if row.get("popularity") is not None else None,
         row.get("poster_path"),
         row.get("tagline"),
     )
@@ -173,7 +172,7 @@ def insert_movie(cur, caches, row):
 
 
 def insert_genres(cur, caches, movie_id, text):
-    if pd.isna(text) or text == "":
+    if text is None or str(text).strip() == "":
         return
     for g in str(text).split(","):
         g = g.strip()
@@ -183,7 +182,7 @@ def insert_genres(cur, caches, movie_id, text):
 
 
 def insert_companies(cur, caches, movie_id, text):
-    if pd.isna(text) or text == "":
+    if text is None or str(text).strip() == "":
         return
     for c in str(text).split(","):
         c = c.strip()
@@ -193,7 +192,7 @@ def insert_companies(cur, caches, movie_id, text):
 
 
 def insert_countries(cur, caches, movie_id, text):
-    if pd.isna(text) or text == "":
+    if text is None or str(text).strip() == "":
         return
     for c in str(text).split(","):
         c = c.strip()
@@ -203,7 +202,7 @@ def insert_countries(cur, caches, movie_id, text):
 
 
 def insert_keywords(cur, caches, movie_id, text):
-    if pd.isna(text) or text == "":
+    if text is None or str(text).strip() == "":
         return
     for k in str(text).split(","):
         k = k.strip()
@@ -213,7 +212,7 @@ def insert_keywords(cur, caches, movie_id, text):
 
 
 def insert_spoken(cur, caches, movie_id, text):
-    if pd.isna(text) or text == "":
+    if text is None or str(text).strip() == "":
         return
     for item in str(text).split(","):
         item = item.strip()
@@ -241,11 +240,11 @@ def process_chunk(df_chunk, chunk_index, log_prefix=""):
     for _, row in df_chunk.iterrows():
         movie_id = int(row["id"])
         insert_movie(cur, caches, row)
-        insert_genres(cur, caches, movie_id, row["genres"])
-        insert_companies(cur, caches, movie_id, row["production_companies"])
-        insert_countries(cur, caches, movie_id, row["production_countries"])
-        insert_keywords(cur, caches, movie_id, row["keywords"])
-        insert_spoken(cur, caches, movie_id, row["spoken_languages"])
+        insert_genres(cur, caches, movie_id, row.get("genres"))
+        insert_companies(cur, caches, movie_id, row.get("production_companies"))
+        insert_countries(cur, caches, movie_id, row.get("production_countries"))
+        insert_keywords(cur, caches, movie_id, row.get("keywords"))
+        insert_spoken(cur, caches, movie_id, row.get("spoken_languages"))
 
     conn.commit()
     cur.close()
@@ -285,7 +284,12 @@ def import_csv(chunksize=10000, max_rows=None):
     completed_rows = 0
 
     for chunk_index, df in enumerate(pd.read_csv(CSV_MOVIE, chunksize=chunksize)):
+        # 1. Convert dates (invalid dates become NaT)
         df["release_date"] = pd.to_datetime(df["release_date"], errors="coerce").dt.date
+        
+        df = df.astype(object)
+        # 2. Convert all pandas missing values (NaN, NaT) to standard Python None
+        df = df.where(pd.notna(df), None)
 
         if max_rows is not None and submitted_rows >= max_rows:
             break
