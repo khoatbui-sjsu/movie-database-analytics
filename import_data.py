@@ -1,3 +1,6 @@
+import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import pandas as pd
 import mysql.connector
 
@@ -8,75 +11,101 @@ DB = {
     "database": "TMDBMovie"
 }
 
-CSV_MOVIE = "Small_data_movies.csv"
+# CSV config
+# CSV_MOVIE = "Small_data_movies.csv"
+CSV_MOVIE = "TMDB_movie_dataset_v11.csv"
 CSV_ISO = "language_iso.csv"
+
+# Synthetic language code generator (keeps codes <= 5 chars)
+_SYNTHETIC_MAX = 9999  # x0001 .. x9999 (fits VARCHAR(5))
+
 
 def connect():
     return mysql.connector.connect(**DB)
 
+
 def cursor(conn):
     return conn.cursor(buffered=True)
 
-cache_lang = {}
-cache_genre = {}
-cache_company = {}
-cache_country = {}
-cache_keyword = {}
 
-name_to_iso = {}
-valid_languages = set()
-synthetic_counter = 0
+def _format_synthetic_code(counter: int) -> str:
+    """Format the synthetic code as x0001, x0002, ..."""
+    return f"x{counter:04d}"
 
 
-# ==========================
-# IMPORT ISO CSV
-# ==========================
-def import_iso_languages(cur):
-    df = pd.read_csv(CSV_ISO)
-    for _, row in df.iterrows():
-        code = str(row["code"]).strip()
-        name = str(row["name"]).strip()
+def load_language_cache(cur):
+    """Load language caches from the database."""
+    cur.execute("SELECT language_code, language_name FROM language")
+    valid_languages = set()
+    code_to_name = {}
+    synthetic_counter = 0
 
-        cur.execute(
-            "INSERT IGNORE INTO language(language_code, language_name) VALUES (%s, %s)",
-            (code, name)
-        )
-        name_to_iso[name] = code
+    for code, name in cur.fetchall():
+        valid_languages.add(code)
+        code_to_name[code] = name
 
+        if code.startswith("x") and len(code) == 5 and code[1:].isdigit():
+            synthetic_counter = max(synthetic_counter, int(code[1:]))
 
-def load_valid_languages(cur):
-    global valid_languages
-    cur.execute("SELECT language_code FROM language")
-    valid_languages = {row[0] for row in cur.fetchall()}
-
-
-def load_synthetic_counter(cur):
-    global synthetic_counter
-    cur.execute("SELECT language_code FROM language WHERE language_code LIKE 'x%'")
-    nums = []
-    for (code,) in cur.fetchall():
-        if code[1:].isdigit():
-            nums.append(int(code[1:]))
-    synthetic_counter = max(nums) if nums else 0
+    name_to_iso = {name: code for code, name in code_to_name.items()}
+    return {
+        "valid_languages": valid_languages,
+        "code_to_name": code_to_name,
+        "name_to_iso": name_to_iso,
+        "synthetic_counter": synthetic_counter,
+    }
 
 
-def create_synthetic_language(cur, name):
-    global synthetic_counter
-    synthetic_counter += 1
-    code = f"x{synthetic_counter}"
+def create_synthetic_language(cur, caches, name: str) -> str:
+    """Create a synthetic language code for a name and insert it into the DB."""
+    valid_languages = caches["valid_languages"]
+    code_to_name = caches["code_to_name"]
 
+    # Keep counter in sync with the database in case other workers inserted new codes.
     cur.execute(
-        "INSERT INTO language(language_code, language_name) VALUES (%s, %s)",
-        (code, name)
+        "SELECT MAX(CAST(SUBSTRING(language_code, 2) AS UNSIGNED)) FROM language WHERE language_code LIKE 'x____'"
     )
+    row = cur.fetchone()
+    if row and row[0] is not None:
+        counter = max(caches["synthetic_counter"], int(row[0]))
+    else:
+        counter = caches["synthetic_counter"]
 
-    valid_languages.add(code)
-    cache_lang[code] = code
+    counter += 1
+    code = _format_synthetic_code(counter)
+
+    # Ensure we don’t collide with an existing code for a different name.
+    while code in valid_languages and code_to_name.get(code) != name:
+        counter += 1
+        if counter > _SYNTHETIC_MAX:
+            raise RuntimeError("Ran out of synthetic language codes")
+        code = _format_synthetic_code(counter)
+
+    caches["synthetic_counter"] = counter
+
+    if code not in valid_languages:
+        cur.execute(
+            "INSERT INTO language(language_code, language_name) VALUES (%s, %s)",
+            (code, name),
+        )
+        valid_languages.add(code)
+        code_to_name[code] = name
+        caches["name_to_iso"][name] = code
+
     return code
 
 
-def ensure_language(cur, value):
-    value = value.strip()
+def ensure_language(cur, caches, value: str | None) -> str | None:
+    """Ensure a language code exists for a value (code or name)."""
+    if value is None:
+        return None
+
+    value = str(value).strip()
+    if value == "":
+        return None
+
+    valid_languages = caches["valid_languages"]
+    name_to_iso = caches["name_to_iso"]
 
     if value in valid_languages:
         return value
@@ -84,12 +113,12 @@ def ensure_language(cur, value):
     if value in name_to_iso:
         return name_to_iso[value]
 
-    return create_synthetic_language(cur, value)
+    if len(value) <= 5 and value.isalnum():
+        return create_synthetic_language(cur, caches, value)
+
+    return create_synthetic_language(cur, caches, value)
 
 
-# ==========================
-# GENERIC LOOKUP
-# ==========================
 def ensure_lookup(cur, name, table, cache, col_name):
     if name in cache:
         return cache[name]
@@ -103,13 +132,10 @@ def ensure_lookup(cur, name, table, cache, col_name):
     return None
 
 
-# ==========================
-# INSERT MOVIE
-# ==========================
-def insert_movie(cur, row):
-    lang = row["original_language"]
+def insert_movie(cur, caches, row):
+    lang = row.get("original_language")
     if pd.notna(lang) and lang != "":
-        lang = ensure_language(cur, lang)
+        lang = ensure_language(cur, caches, lang)
     else:
         lang = None
 
@@ -124,116 +150,187 @@ def insert_movie(cur, row):
 
     data = (
         int(row["id"]),
-        row["title"],
-        float(row["vote_average"]) if not pd.isna(row["vote_average"]) else None,
-        int(row["vote_count"]) if not pd.isna(row["vote_count"]) else None,
-        row["status"],
-        row["release_date"] if not pd.isna(row["release_date"]) else None,
-        float(row["revenue"]) if not pd.isna(row["revenue"]) else None,
-        int(row["runtime"]) if not pd.isna(row["runtime"]) else None,
-        bool(row["adult"]) if not pd.isna(row["adult"]) else None,
-        row["backdrop_path"],
-        int(row["budget"]) if not pd.isna(row["budget"]) else None,
-        row["homepage"],
-        row["imdb_id"],
+        row.get("title"),
+        float(row["vote_average"]) if not pd.isna(row.get("vote_average")) else None,
+        int(row["vote_count"]) if not pd.isna(row.get("vote_count")) else None,
+        row.get("status"),
+        row.get("release_date") if not pd.isna(row.get("release_date")) else None,
+        float(row["revenue"]) if not pd.isna(row.get("revenue")) else None,
+        int(row["runtime"]) if not pd.isna(row.get("runtime")) else None,
+        bool(row["adult"]) if not pd.isna(row.get("adult")) else None,
+        row.get("backdrop_path"),
+        int(row["budget"]) if not pd.isna(row.get("budget")) else None,
+        row.get("homepage"),
+        row.get("imdb_id"),
         lang,
-        row["original_title"],
-        row["overview"],
-        float(row["popularity"]) if not pd.isna(row["popularity"]) else None,
-        row["poster_path"],
-        row["tagline"]
+        row.get("original_title"),
+        row.get("overview"),
+        float(row["popularity"]) if not pd.isna(row.get("popularity")) else None,
+        row.get("poster_path"),
+        row.get("tagline"),
     )
 
     cur.execute(sql, data)
 
 
-# ==========================
-# INSERT LINK TABLES
-# ==========================
-def insert_genres(cur, movie_id, text):
+def insert_genres(cur, caches, movie_id, text):
     if pd.isna(text) or text == "":
         return
     for g in str(text).split(","):
         g = g.strip()
         if g:
-            gid = ensure_lookup(cur, g, "genre", cache_genre, "genre_name")
+            gid = ensure_lookup(cur, g, "genre", caches["genre"], "genre_name")
             cur.execute("INSERT IGNORE INTO movie_genre(movie_id, genre_id) VALUES (%s,%s)", (movie_id, gid))
 
 
-def insert_companies(cur, movie_id, text):
+def insert_companies(cur, caches, movie_id, text):
     if pd.isna(text) or text == "":
         return
     for c in str(text).split(","):
         c = c.strip()
         if c:
-            cid = ensure_lookup(cur, c, "company", cache_company, "company_name")
+            cid = ensure_lookup(cur, c, "company", caches["company"], "company_name")
             cur.execute("INSERT IGNORE INTO movie_company(movie_id, company_id) VALUES (%s,%s)", (movie_id, cid))
 
 
-def insert_countries(cur, movie_id, text):
+def insert_countries(cur, caches, movie_id, text):
     if pd.isna(text) or text == "":
         return
     for c in str(text).split(","):
         c = c.strip()
         if c:
-            cid = ensure_lookup(cur, c, "country", cache_country, "country_name")
+            cid = ensure_lookup(cur, c, "country", caches["country"], "country_name")
             cur.execute("INSERT IGNORE INTO movie_country(movie_id, country_id) VALUES (%s,%s)", (movie_id, cid))
 
 
-def insert_keywords(cur, movie_id, text):
+def insert_keywords(cur, caches, movie_id, text):
     if pd.isna(text) or text == "":
         return
     for k in str(text).split(","):
         k = k.strip()
         if k:
-            kid = ensure_lookup(cur, k, "keyword", cache_keyword, "keyword_name")
+            kid = ensure_lookup(cur, k, "keyword", caches["keyword"], "keyword_name")
             cur.execute("INSERT IGNORE INTO movie_keyword(movie_id, keyword_id) VALUES (%s,%s)", (movie_id, kid))
 
 
-def insert_spoken(cur, movie_id, text):
+def insert_spoken(cur, caches, movie_id, text):
     if pd.isna(text) or text == "":
         return
     for item in str(text).split(","):
         item = item.strip()
         if item:
-            code = ensure_language(cur, item)
+            code = ensure_language(cur, caches, item)
             cur.execute(
                 "INSERT IGNORE INTO movie_language(movie_id, language_code) VALUES (%s,%s)",
-                (movie_id, code)
+                (movie_id, code),
             )
 
 
-# ==========================
-# MAIN IMPORT
-# ==========================
-def import_csv():
+def process_chunk(df_chunk, chunk_index, log_prefix=""):
+    """Process one CSV chunk in its own database connection."""
     conn = connect()
     cur = cursor(conn)
 
-    print("Importing ISO languages...")
-    import_iso_languages(cur)
-    load_valid_languages(cur)
-    load_synthetic_counter(cur)
+    caches = load_language_cache(cur)
+    caches.update({
+        "genre": {},
+        "company": {},
+        "country": {},
+        "keyword": {},
+    })
 
-    print("Loading movie CSV...")
-    df = pd.read_csv(CSV_MOVIE)
-    df["release_date"] = pd.to_datetime(df["release_date"], errors="coerce").dt.date
-
-    for _, row in df.iterrows():
+    for _, row in df_chunk.iterrows():
         movie_id = int(row["id"])
-
-        insert_movie(cur, row)
-        insert_genres(cur, movie_id, row["genres"])
-        insert_companies(cur, movie_id, row["production_companies"])
-        insert_countries(cur, movie_id, row["production_countries"])
-        insert_keywords(cur, movie_id, row["keywords"])
-        insert_spoken(cur, movie_id, row["spoken_languages"])
+        insert_movie(cur, caches, row)
+        insert_genres(cur, caches, movie_id, row["genres"])
+        insert_companies(cur, caches, movie_id, row["production_companies"])
+        insert_countries(cur, caches, movie_id, row["production_countries"])
+        insert_keywords(cur, caches, movie_id, row["keywords"])
+        insert_spoken(cur, caches, movie_id, row["spoken_languages"])
 
     conn.commit()
     cur.close()
     conn.close()
-    print("DONE IMPORTING CSV!")
+
+    print(f"{log_prefix}Chunk {chunk_index} done (rows: {len(df_chunk)})")
+    return len(df_chunk)
+
+
+def _count_csv_rows(path: str) -> int:
+    """Count the number of data rows in a CSV (excludes header)."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            return max(0, sum(1 for _ in f) - 1)
+    except FileNotFoundError:
+        return 0
+
+
+def import_csv(chunksize=10000, workers=1, max_rows=None):
+    # Ensure the ISO language table is populated before parallel workers run.
+    conn = connect()
+    cur = cursor(conn)
+    print("Importing ISO languages (once)...")
+    import_iso_languages(cur)
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    total_rows = _count_csv_rows(CSV_MOVIE)
+    if total_rows == 0:
+        print("No rows found in CSV or file is missing.")
+        return
+
+    print(f"Reading CSV in chunks of {chunksize} rows (total approx {total_rows})...")
+
+    executor = ThreadPoolExecutor(max_workers=workers)
+    futures = []
+    submitted_rows = 0
+    completed_rows = 0
+
+    for chunk_index, df in enumerate(pd.read_csv(CSV_MOVIE, chunksize=chunksize)):
+        df["release_date"] = pd.to_datetime(df["release_date"], errors="coerce").dt.date
+
+        if max_rows is not None and submitted_rows >= max_rows:
+            break
+
+        if max_rows is not None and submitted_rows + len(df) > max_rows:
+            df = df.iloc[: max_rows - submitted_rows]
+
+        submitted_rows += len(df)
+
+        futures.append(
+            executor.submit(process_chunk, df, chunk_index, f"[worker {chunk_index}] ")
+        )
+
+        if max_rows is not None and submitted_rows >= max_rows:
+            break
+
+    for fut in as_completed(futures):
+        completed_rows += fut.result() or 0
+        percent = (completed_rows / total_rows) * 100 if total_rows else 0
+        print(f"Progress: {completed_rows}/{total_rows} ({percent:.1f}%)")
+
+    executor.shutdown(wait=True)
+    print(f"Import complete (total rows processed: {completed_rows})")
+
+
+def import_iso_languages(cur):
+    df = pd.read_csv(CSV_ISO)
+    for _, row in df.iterrows():
+        code = str(row["code"]).strip()
+        name = str(row["name"]).strip()
+
+        cur.execute(
+            "INSERT IGNORE INTO language(language_code, language_name) VALUES (%s, %s)",
+            (code, name),
+        )
 
 
 if __name__ == "__main__":
-    import_csv()
+    parser = argparse.ArgumentParser(description="Import TMDB data into MySQL.")
+    parser.add_argument("--chunksize", type=int, default=10000, help="Number of rows per chunk")
+    parser.add_argument("--workers", type=int, default=1, help="Number of parallel workers")
+    parser.add_argument("--max-rows", type=int, default=None, help="Stop after processing this many rows")
+    args = parser.parse_args()
+
+    import_csv(chunksize=args.chunksize, workers=args.workers, max_rows=args.max_rows)

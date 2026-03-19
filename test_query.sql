@@ -1,5 +1,10 @@
-SELECT COUNT(id) FROM movies;
-
+SELECT
+  (SELECT COUNT(*) FROM company) AS company_count,
+  (SELECT COUNT(*) FROM country) AS country_count,
+  (SELECT COUNT(*) FROM genre) AS genre_count,
+  (SELECT COUNT(*) FROM keyword) AS keyword_count,
+  (SELECT COUNT(*) FROM language) AS language_count,
+  (SELECT COUNT(*) FROM movie) AS movie_count;
 SELECT 
     mv.movie_id,
     mv.title,
