@@ -1,3 +1,4 @@
+-- cheking number of entity
 SELECT
   (SELECT COUNT(*) FROM company) AS company_count,
   (SELECT COUNT(*) FROM country) AS country_count,
@@ -5,6 +6,8 @@ SELECT
   (SELECT COUNT(*) FROM keyword) AS keyword_count,
   (SELECT COUNT(*) FROM language) AS language_count,
   (SELECT COUNT(*) FROM movie) AS movie_count;
+
+-- random checking 
 SELECT 
     mv.movie_id,
     mv.title,
@@ -13,18 +16,18 @@ SELECT
      JOIN company cp ON mcp.company_id = cp.company_id
      WHERE mcp.movie_id = mv.movie_id
     ) AS companies,
-
     (SELECT GROUP_CONCAT(l.language_name ORDER BY l.language_name)
      FROM movie_language ml
      JOIN language l ON ml.language_code = l.language_code
      WHERE ml.movie_id = mv.movie_id
     ) AS languages_support
-
 FROM movie mv
-WHERE mv.movie_id = '68718';
+WHERE mv.movie_id in ['68718','293660','550'];
 
-//2 basic SQL queries//
-//What are the latest movies and their original languages?//
+--
+
+-- 2 basic SQL queries
+-- What are the latest movies and their original languages?
 SELECT 
     m.movie_id,
     m.title,
@@ -37,7 +40,7 @@ WHERE m.release_date IS NOT NULL
 ORDER BY m.release_date DESC
 LIMIT 10;
 
-//How many movies belong to each genre?//
+-- How many movies belong to each genre?
 SELECT 
     g.genre_name,
     COUNT(*) AS number_of_movies
@@ -47,8 +50,8 @@ JOIN movie_genre mg
 GROUP BY g.genre_name
 ORDER BY number_of_movies DESC;
 
-//2 advanced SQL queries//
-//What are the top 3 highest-revenue movies in each original language?//
+-- 2 advanced SQL queries
+-- What are the top 3 highest-revenue movies in each original language?//
 WITH ranked_movies AS (
     SELECT
         m.movie_id,
@@ -74,7 +77,7 @@ FROM ranked_movies
 WHERE revenue_rank <= 3
 ORDER BY original_language, revenue_rank, revenue DESC;
 
-//Which movies earned more than the average revenue of movies in the same original language?//
+-- Which movies earned more than the average revenue of movies in the same original language?//
 SELECT
     m.movie_id,
     m.title,

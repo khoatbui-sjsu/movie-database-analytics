@@ -1,5 +1,4 @@
 import argparse
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 import mysql.connector
@@ -265,8 +264,8 @@ def _count_csv_rows(path: str) -> int:
         return 0
 
 
-def import_csv(chunksize=10000, workers=1, max_rows=None):
-    # Ensure the ISO language table is populated before parallel workers run.
+def import_csv(chunksize=10000, max_rows=None):
+    # Ensure the ISO language table is populated before processing.
     conn = connect()
     cur = cursor(conn)
     print("Importing ISO languages (once)...")
@@ -282,8 +281,6 @@ def import_csv(chunksize=10000, workers=1, max_rows=None):
 
     print(f"Reading CSV in chunks of {chunksize} rows (total approx {total_rows})...")
 
-    executor = ThreadPoolExecutor(max_workers=workers)
-    futures = []
     submitted_rows = 0
     completed_rows = 0
 
@@ -298,19 +295,13 @@ def import_csv(chunksize=10000, workers=1, max_rows=None):
 
         submitted_rows += len(df)
 
-        futures.append(
-            executor.submit(process_chunk, df, chunk_index, f"[worker {chunk_index}] ")
-        )
+        completed_rows += process_chunk(df, chunk_index)
+        percent = (completed_rows / total_rows) * 100 if total_rows else 0
+        print(f"Progress: {completed_rows}/{total_rows} ({percent:.1f}%)")
 
         if max_rows is not None and submitted_rows >= max_rows:
             break
 
-    for fut in as_completed(futures):
-        completed_rows += fut.result() or 0
-        percent = (completed_rows / total_rows) * 100 if total_rows else 0
-        print(f"Progress: {completed_rows}/{total_rows} ({percent:.1f}%)")
-
-    executor.shutdown(wait=True)
     print(f"Import complete (total rows processed: {completed_rows})")
 
 
@@ -329,8 +320,7 @@ def import_iso_languages(cur):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Import TMDB data into MySQL.")
     parser.add_argument("--chunksize", type=int, default=10000, help="Number of rows per chunk")
-    parser.add_argument("--workers", type=int, default=1, help="Number of parallel workers")
     parser.add_argument("--max-rows", type=int, default=None, help="Stop after processing this many rows")
     args = parser.parse_args()
 
-    import_csv(chunksize=args.chunksize, workers=args.workers, max_rows=args.max_rows)
+    import_csv(chunksize=args.chunksize, max_rows=args.max_rows)
