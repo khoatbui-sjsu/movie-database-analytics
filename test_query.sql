@@ -94,3 +94,25 @@ WHERE m.revenue IS NOT NULL
         AND m2.revenue IS NOT NULL
   )
 ORDER BY l.language_name, m.revenue DESC;
+
+-- Gross generated per genre
+SELECT g.genre_name, AVG(m.revenue) as avg_revenue
+from movie_genre mg
+JOIN movie m
+ON m.movie_id = mg.movie_id
+JOIN genre g
+ON g.genre_id = mg.genre_id
+GROUP BY g.genre_name
+ORDER BY avg_revenue DESC
+LIMIT 5;
+
+-- Show languages that don't appear in a movie
+SELECT *
+FROM language l
+WHERE NOT EXISTS (
+	SELECT 1
+	FROM movie m
+	WHERE l.language_code = m.original_language_code
+    
+)
+LIMIT 5;
