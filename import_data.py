@@ -5,7 +5,7 @@ import mysql.connector
 DB = {
     "host": "localhost",
     "user": "root",
-    "password": "25252525",
+    "password": "101188",
     "database": "TMDBMovie"
 }
 
@@ -152,7 +152,7 @@ def insert_movie(cur, caches, row):
         float(row["vote_average"]) if row.get("vote_average") is not None else None,
         int(row["vote_count"]) if row.get("vote_count") is not None else None,
         row.get("status"),
-        row.get("release_date"),
+        row.get("release_date") if row.get("release_date") is not None else None,
         float(row["revenue"]) if row.get("revenue") is not None else None,
         int(row["runtime"]) if row.get("runtime") is not None else None,
         bool(row["adult"]) if row.get("adult") is not None else None,
@@ -283,7 +283,7 @@ def import_csv(chunksize=10000, max_rows=None):
     submitted_rows = 0
     completed_rows = 0
 
-    for chunk_index, df in enumerate(pd.read_csv(CSV_MOVIE, chunksize=chunksize)):
+    for chunk_index, df in enumerate(pd.read_csv(CSV_MOVIE, chunksize=chunksize) ):
         # 1. Convert dates (invalid dates become NaT)
         df["release_date"] = pd.to_datetime(df["release_date"], errors="coerce").dt.date
         
