@@ -136,9 +136,93 @@ GROUP BY g.genre_name
 ORDER BY avg_vote DESC;
 
 -- My
+--//1.Which movies earned more than the average revenue of movies in the same original language?//
+SELECT
+    m.movie_id,
+    m.title,
+    l.language_name AS original_language,
+    m.revenue
+FROM movie m
+LEFT JOIN language l
+    ON m.original_language_code = l.language_code
+WHERE m.revenue IS NOT NULL
+  AND m.revenue > (
+      SELECT AVG(m2.revenue)
+      FROM movie m2
+      WHERE m2.original_language_code = m.original_language_code
+        AND m2.revenue IS NOT NULL
+  )
+ORDER BY l.language_name, m.revenue DESC;
+
+--2.Which genres have the longest movies?
+SELECT 
+    g.genre_name,
+    COUNT(*) AS movie_count,
+    ROUND(AVG(m.runtime), 2) AS avg_runtime
+FROM movie m
+JOIN movie_genre mg ON m.movie_id = mg.movie_id
+JOIN genre g ON mg.genre_id = g.genre_id
+WHERE m.runtime IS NOT NULL
+  AND m.runtime > 0
+GROUP BY g.genre_name
+HAVING movie_count >= 10
+ORDER BY avg_runtime DESC;
+
+--3.Which companies earn the most on average?
+SELECT 
+    c.company_name,
+    COUNT(m.movie_id) AS movie_count,
+    ROUND(AVG(m.revenue), 2) AS avg_revenue
+FROM company c
+JOIN movie_company mc ON c.company_id = mc.company_id
+JOIN movie m ON mc.movie_id = m.movie_id
+WHERE m.revenue > 0
+GROUP BY c.company_id, c.company_name
+HAVING movie_count >= 5
+ORDER BY avg_revenue DESC
+LIMIT 10;
+
+--4. What is the best-rated movie each year?
+WITH ranked_year_movies AS (
+    SELECT 
+        YEAR(release_date) AS release_year,
+        title,
+        vote_average,
+        vote_count,
+        ROW_NUMBER() OVER (
+            PARTITION BY YEAR(release_date)
+            ORDER BY vote_average DESC, vote_count DESC
+        ) AS rating_rank
+    FROM movie
+    WHERE release_date IS NOT NULL
+      AND vote_count >= 500
+)
+SELECT 
+    release_year,
+    title,
+    vote_average,
+    vote_count
+FROM ranked_year_movies
+WHERE rating_rank = 1
+ORDER BY release_year DESC;
+
+--5.Which movies are missing budget or revenue?
+SELECT 
+    movie_id,
+    title,
+    budget,
+    revenue,
+    release_date
+FROM movie
+WHERE budget IS NULL 
+   OR revenue IS NULL
+   OR budget = 0
+   OR revenue = 0
+ORDER BY release_date DESC
+LIMIT 50;
 
 -- Khoa
--- 1.Show languages that don't appear in a movie
+--1.Show languages that don't appear in a movie
 SELECT *
 FROM language l
 WHERE NOT EXISTS (
