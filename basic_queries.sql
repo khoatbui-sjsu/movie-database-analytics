@@ -28,6 +28,7 @@ FROM movie mv
 WHERE mv.movie_id in ('68718','293660','550','1726');
 
 -- My
+--//What are the latest movies and their original languages?//
 SELECT 
     m.movie_id,
     m.title,
