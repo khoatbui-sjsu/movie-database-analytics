@@ -291,6 +291,12 @@ def import_csv(chunksize=10000, max_rows=None):
         # 2. Convert all pandas missing values (NaN, NaT) to standard Python None
         df = df.where(pd.notna(df), None)
 
+        # 3. Remove duplicate rows based on title, keeping the first occurrence
+        df = df.drop_duplicates(subset=["title"], keep="first")
+
+        # 4. drop row with year of release_date after 2026
+        df = df[df["release_date"].apply(lambda x: x is None or x.year <= 2026)]
+
         if max_rows is not None and submitted_rows >= max_rows:
             break
 
