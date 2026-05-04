@@ -5,28 +5,25 @@ USE TMDBMovie;
 
 -- Bris 5 queries
 
--- 1.get the revenue running total of movie releases over the years
-Select release_date, revenue, original_title,
-SUM(revenue) OVER(PARTITION BY YEAR(release_date) order by release_date) AS yearly_running_total
-from movie
-WHERE revenue > 10000;
+USE TMDBMovie;
 
--- buget vs popularity
+-- 1. get the revenue running total of movie releases over the years up to 2026 (released)
+WITH yearly_rev_overtime AS (
+  SELECT YEAR(release_date) AS yr, SUM(revenue) AS year_revenue
+  FROM movie
+  WHERE release_date <= '2026-06-01'
+  GROUP BY YEAR(release_date)
+)
+SELECT yr, year_revenue,
+  SUM(year_revenue) -- running total prev to curr
+  OVER (
+    ORDER BY yr
+    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+  ) AS cum_revenue
+FROM yearly_rev_overtime
+ORDER BY yr;
 
--- 2.vote avg based on movie genre
-select g.genre_name, AVG(vote_average) as avg_vote
-from movie m
-join movie_genre mg
-on mg.movie_id = m.movie_id
-join genre g
-on g.genre_id = mg.genre_id
-WHERE vote_average <> 0
-group by g.genre_name
-limit 5;
-
--- vote count vs revenue
-
--- 3.separate budgets into diff tiers
+-- 2. separate budgets into diff tiers
 WITH tiers AS (
 	select *, 
     ntile(5) over (order by budget) as bucket
@@ -35,13 +32,13 @@ WITH tiers AS (
 SELECT *,
 	CASE WHEN bucket = 1 then 'Mega'
 		when bucket = 2 then 'Mid'
-        when bucket = 3 then 'Cheap'
+        when bucket = 3 then 'Low'
         when bucket = 4 then 'Independent'
         when bucket = 5 then 'Micro'
 	END budget_tier
 from tiers;
 
--- 4.Rank movies by revenue within each original language
+-- 3. rank movies by revenue within each original language
 WITH ranked_movies AS (
     SELECT movie_id, title, original_language_code, revenue,
 	RANK() OVER ( PARTITION BY original_language_code ORDER BY revenue DESC) AS rev_rank
@@ -51,7 +48,7 @@ SELECT *
 FROM ranked_movies
 WHERE rev_rank <= 3;
 
--- 5.do movies with more genres have higher revenue? since they appeal to wider audience
+-- 4. do movies with more genres have higher revenue? since they appeal to wider audience
 WITH movie_genre_count AS (
 	SELECT movie_id, count(genre_id) as genre_count
 	FROM movie_genre
@@ -61,14 +58,12 @@ SELECT mgc.genre_count, COUNT(*) AS movie_count, AVG(m.revenue - m.budget) AS av
 FROM movie_genre_count mgc
 JOIN movie m
 ON mgc.movie_id = m.movie_id
-WHERE m.revenue IS NOT NULL
-  AND m.revenue > 0
-  AND m.budget IS NOT NULL
-  AND m.budget > 0
+WHERE m.revenue IS NOT NULL AND m.revenue > 0 AND m.budget IS NOT NULL AND m.budget > 0
 GROUP BY mgc.genre_count
 ORDER BY mgc.genre_count;
 
--- 6.Which countries produce the highest-budget movies on average?
+
+-- 5. which countries produce the highest-budget movies on average?
 select * from (
 select country_id, AVG(budget) as country_budget
 from movie_country mc
@@ -80,6 +75,65 @@ GROUP BY country_id
 join country c
 on tb.country_id = c.country_id
 order by country_budget desc;
+
+-- 6. failures based on revenue
+SELECT *
+FROM movie
+WHERE revenue > 0 AND revenue <= budget AND release_date <= '2026-06-01';
+
+
+-- 7. indexing/performance
+/*
+Before:
+'-> Sort: avg_vote DESC  (actual time=5058..5058 rows=19 loops=1)\n    
+	-> Stream results  (cost=438616 rows=19) (actual time=747..5058 rows=19 loops=1)\n        
+		-> Group aggregate: avg(m.vote_average)  (cost=438616 rows=19) (actual time=747..5057 rows=19 loops=1)\n            	
+			-> Nested loop inner join  (cost=371776 rows=290087) (actual time=3.2..4964 rows=1.1e+6 loops=1)\n                
+				-> Nested loop inner join  (cost=32725 rows=322319) (actual time=2.91..347 rows=1.19e+6 loops=1)\n                    
+					-> Covering index scan on g using genre_name  (cost=2.9 rows=19) (actual time=1.23..1.27 rows=19 loops=1)\n                    
+						-> Covering index lookup on mg using genre_id (genre_id = g.genre_id)  (cost=115 rows=16964) (actual time=0.525..16.6 rows=62774 loops=19)\n                
+					-> Filter: ((year(m.release_date) <= 2026) and (m.vote_average is not null))  (cost=0.952 rows=0.9) (actual time=0.00377..0.0038 rows=0.92 loops=1.19e+6)\n                    
+						-> Single-row index lookup on m using PRIMARY (movie_id = mg.movie_id)  (cost=0.952 rows=1) (actual time=0.00369..0.0037 rows=1 loops=1.19e+6)\n'
+*/
+-- vote avg based on movie genre
+explain analyze select g.genre_name, AVG(vote_average) as avg_vote
+from movie m
+join movie_genre mg
+on mg.movie_id = m.movie_id
+join genre g
+on g.genre_id = mg.genre_id
+WHERE YEAR(release_date) <= 2026 AND vote_average IS NOT NULL
+group by g.genre_name
+order by avg_vote desc;
+
+-- optimized from 4.5s to 1.6s
+/*
+After:
+'-> Sort: avg_vote DESC  (actual time=1668..1668 rows=19 loops=1)\n    
+	-> Table scan on <temporary>  (actual time=1668..1668 rows=19 loops=1)\n        
+		-> Aggregate using temporary table  (actual time=1668..1668 rows=19 loops=1)\n            
+			-> Nested loop inner join  (cost=1.05e+6 rows=847390) (actual time=0.213..1449 rows=1.1e+6 loops=1)\n                
+				-> Nested loop inner join  (cost=753814 rows=847390) (actual time=0.197..1112 rows=1.1e+6 loops=1)\n                   
+					-> Filter: ((movie.release_date <= DATE\'2026-12-31\') and (movie.vote_average is not null))  (cost=141158 rows=629077) (actual time=0.122..141 rows=1.09e+6 loops=1)\n                        
+						-> Covering index range scan on movie using idx_movie_release_vote over (NULL < release_date <= \'2026-12-31\')  (cost=141158 rows=698974) (actual time=0.12..102 rows=1.09e+6 loops=1)\n                    
+					-> Covering index lookup on mg using PRIMARY (movie_id = movie.movie_id)  (cost=0.839 rows=1.35) (actual time=742e-6..822e-6 rows=1.01 loops=1.09e+6)\n                
+				-> Single-row index lookup on g using PRIMARY (genre_id = mg.genre_id)  (cost=0.25 rows=1) (actual time=223e-6..237e-6 rows=1 loops=1.1e+6)\n'
+
+*/
+CREATE INDEX idx_movie_release_date ON movie(release_date);
+CREATE INDEX idx_movie_release_vote ON movie(release_date, vote_average, movie_id);
+
+explain analyze WITH filtered_res AS (
+  SELECT movie_id, vote_average
+  FROM movie
+  WHERE release_date <= '2026-06-01' AND vote_average IS NOT NULL
+)
+SELECT g.genre_name, AVG(fr.vote_average) AS avg_vote
+FROM filtered_res fr
+JOIN movie_genre mg ON mg.movie_id = fr.movie_id
+JOIN genre g ON g.genre_id = mg.genre_id
+GROUP BY g.genre_name
+ORDER BY avg_vote DESC;
 
 -- My
 
