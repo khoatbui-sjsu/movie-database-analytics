@@ -1,0 +1,103 @@
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'DM Sans', sans-serif;
+}
+
+/* Dark cinematic background */
+.stApp {
+    background: #0a0a0f;
+    color: #e8e0d0;
+}
+
+h1, h2, h3 {
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 2px;
+    color: #f5c518;  /* IMDb gold */
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background: #111118 !important;
+    border-right: 1px solid #2a2a3a;
+}
+
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3,
+[data-testid="stSidebar"] label {
+    color: #f5c518 !important;
+}
+
+/* Metric cards */
+[data-testid="metric-container"] {
+    background: #16161f;
+    border: 1px solid #2a2a3a;
+    border-radius: 8px;
+    padding: 12px;
+}
+
+[data-testid="metric-container"] label {
+    color: #888 !important;
+    font-size: 11px !important;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+[data-testid="metric-container"] [data-testid="stMetricValue"] {
+    color: #f5c518 !important;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2rem !important;
+}
+
+/* Dataframe */
+[data-testid="stDataFrame"] {
+    border: 1px solid #2a2a3a;
+    border-radius: 8px;
+}
+
+/* Divider */
+hr { border-color: #2a2a3a; }
+
+/* Selectbox / slider labels */
+.stSelectbox label, .stSlider label, .stMultiSelect label,
+.stTextInput label, .stDateInput label {
+    color: #aaa !important;
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+/* Buttons */
+.stButton button {
+    background: #f5c518;
+    color: #0a0a0f;
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 1px;
+    font-size: 16px;
+    border: none;
+    border-radius: 4px;
+}
+.stButton button:hover {
+    background: #ffd740;
+    color: #0a0a0f;
+}
+
+/* Tab styling */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 4px;
+    border-bottom: 1px solid #2a2a3a;
+}
+.stTabs [data-baseweb="tab"] {
+    background: transparent;
+    color: #666;
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 1px;
+    font-size: 16px;
+    border-radius: 4px 4px 0 0;
+}
+.stTabs [aria-selected="true"] {
+    background: #16161f !important;
+    color: #f5c518 !important;
+    border-bottom: 2px solid #f5c518;
+}
