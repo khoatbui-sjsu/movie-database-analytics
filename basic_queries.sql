@@ -57,3 +57,16 @@ ORDER BY number_of_movies DESC;
 SELECT *
 FROM movie
 WHERE revenue <= budget;
+
+--//How hastotal movie revenue changed over time?//
+WITH yearly_rev_overtime AS (
+SELECT
+YEAR(release_date) AS yr,
+SUM(revenue) AS year_revenue
+FROM movie
+WHERE release_date <= ’2026-06-01’
+GROUP BY YEAR(release_date)
+)
+SELECT *
+FROM yearly_rev_overtime
+ORDER BY yr;
