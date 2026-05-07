@@ -216,6 +216,8 @@ JOIN genre g
 GROUP BY g.genre_name
 ORDER BY movie_count DESC
 LIMIT 10;
+
+
 -- Khoa
 -- 1.Show languages that don't appear in a movie
 SELECT *
