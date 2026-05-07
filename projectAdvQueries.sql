@@ -137,23 +137,17 @@ GROUP BY g.genre_name
 ORDER BY avg_vote DESC;
 
 -- My
--- //1.Which movies earned more than the average revenue of movies in the same original language?//
-SELECT
-    m.movie_id,
-    m.title,
-    l.language_name AS original_language,
-    m.revenue
+-- //Which movies outperform their language average?//
+SELECT m.movie_id, m.title, l.language_name, m.revenue
 FROM movie m
-LEFT JOIN language l
-    ON m.original_language_code = l.language_code
-WHERE m.revenue IS NOT NULL
-  AND m.revenue > (
-      SELECT AVG(m2.revenue)
-      FROM movie m2
-      WHERE m2.original_language_code = m.original_language_code
-        AND m2.revenue IS NOT NULL
-  )
-ORDER BY l.language_name, m.revenue DESC;
+LEFT JOIN language l 
+	ON m.original_language_code = l.language_code
+JOIN (
+SELECT original_language_code, AVG(revenue) as avg_lang_revenue
+FROM movie
+GROUP BY original_language_code) as lang_avg 
+	ON m.original_language_code = lang_avg.original_language_code
+WHERE m.revenue > lang_avg.avg_lang_revenue;
 
 -- 2.Which genres have the longest movies?
 SELECT 
