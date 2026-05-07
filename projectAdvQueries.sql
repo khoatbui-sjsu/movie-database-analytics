@@ -150,17 +150,14 @@ GROUP BY original_language_code) as lang_avg
 WHERE m.revenue > lang_avg.avg_lang_revenue;
 
 -- 2.Which genres have the longest movies?
-SELECT 
-    g.genre_name,
-    COUNT(*) AS movie_count,
-    ROUND(AVG(m.runtime), 2) AS avg_runtime
+SELECT g.genre_name, COUNT(*) AS movie_count,
+AVG(m.runtime) AS avg_runtime
 FROM movie m
-JOIN movie_genre mg ON m.movie_id = mg.movie_id
-JOIN genre g ON mg.genre_id = g.genre_id
-WHERE m.runtime IS NOT NULL
-  AND m.runtime > 0
+JOIN movie_genre mg 
+	ON m.movie_id = mg.movie_id
+JOIN genre g 
+	ON mg.genre_id = g.genre_id
 GROUP BY g.genre_name
-HAVING movie_count >= 10
 ORDER BY avg_runtime DESC;
 
 -- 3. Which movie genres have the highest number of movies with the average audience ratings?
