@@ -208,32 +208,23 @@ FROM ranked_year_movies
 WHERE rating_rank = 1
 ORDER BY release_year DESC;
 
--- 5.Which movie production companies hold the largest share of total movie revenue in the industry?
-WITH company_revenue AS (
-    SELECT 
-        c.company_name,
-        SUM(m.revenue) AS total_revenue
-    FROM company c
-    JOIN movie_company mc
-        ON c.company_id = mc.company_id
-    JOIN movie m
-        ON mc.movie_id = m.movie_id
-    WHERE m.revenue IS NOT NULL
-    GROUP BY c.company_name
-)
-
+-- 5.How are movies distributed across different genres in the dataset?
 SELECT 
-    company_name,
-    total_revenue,
+    g.genre_name,
+    COUNT(DISTINCT m.movie_id) AS movie_count,
     ROUND(
-        total_revenue * 100.0 / 
-        SUM(total_revenue) OVER (),
+        COUNT(DISTINCT m.movie_id) * 100.0 /
+        SUM(COUNT(DISTINCT m.movie_id)) OVER (),
         2
-    ) AS market_share_percentage
-FROM company_revenue
-ORDER BY total_revenue DESC
+    ) AS percentage
+FROM movie m
+JOIN movie_genre mg
+    ON m.movie_id = mg.movie_id
+JOIN genre g
+    ON mg.genre_id = g.genre_id
+GROUP BY g.genre_name
+ORDER BY movie_count DESC
 LIMIT 10;
-
 -- Khoa
 -- 1.Show languages that don't appear in a movie
 SELECT *
