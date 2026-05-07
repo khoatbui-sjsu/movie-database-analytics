@@ -169,19 +169,20 @@ GROUP BY g.genre_name
 HAVING movie_count >= 10
 ORDER BY avg_runtime DESC;
 
--- 3.Which companies earn the most on average?
+-- 3. Which movie genres have the highest number of movies with the average audience ratings?
 SELECT 
-    c.company_name,
-    COUNT(m.movie_id) AS movie_count,
-    ROUND(AVG(m.revenue), 2) AS avg_revenue
-FROM company c
-JOIN movie_company mc ON c.company_id = mc.company_id
-JOIN movie m ON mc.movie_id = m.movie_id
-WHERE m.revenue > 0
-GROUP BY c.company_id, c.company_name
-HAVING movie_count >= 5
-ORDER BY avg_revenue DESC
-LIMIT 10;
+    g.genre_name,
+    COUNT(DISTINCT m.movie_id) AS movie_count,
+    ROUND(AVG(m.vote_average), 2) AS avg_rating
+FROM movie m
+JOIN movie_genre mg
+    ON m.movie_id = mg.movie_id
+JOIN genre g
+    ON mg.genre_id = g.genre_id
+WHERE m.vote_average IS NOT NULL
+GROUP BY g.genre_name
+ORDER BY movie_count DESC
+LIMIT 15;
 
 -- 4. What is the best-rated movie each year?
 WITH ranked_year_movies AS (
@@ -207,20 +208,31 @@ FROM ranked_year_movies
 WHERE rating_rank = 1
 ORDER BY release_year DESC;
 
--- 5.Which movies are missing budget or revenue?
+-- 5.Which movie production companies hold the largest share of total movie revenue in the industry?
+WITH company_revenue AS (
+    SELECT 
+        c.company_name,
+        SUM(m.revenue) AS total_revenue
+    FROM company c
+    JOIN movie_company mc
+        ON c.company_id = mc.company_id
+    JOIN movie m
+        ON mc.movie_id = m.movie_id
+    WHERE m.revenue IS NOT NULL
+    GROUP BY c.company_name
+)
+
 SELECT 
-    movie_id,
-    title,
-    budget,
-    revenue,
-    release_date
-FROM movie
-WHERE budget IS NULL 
-   OR revenue IS NULL
-   OR budget = 0
-   OR revenue = 0
-ORDER BY release_date DESC
-LIMIT 50;
+    company_name,
+    total_revenue,
+    ROUND(
+        total_revenue * 100.0 / 
+        SUM(total_revenue) OVER (),
+        2
+    ) AS market_share_percentage
+FROM company_revenue
+ORDER BY total_revenue DESC
+LIMIT 10;
 
 -- Khoa
 -- 1.Show languages that don't appear in a movie
