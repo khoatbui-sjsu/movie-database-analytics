@@ -28,7 +28,7 @@ FROM movie mv
 WHERE mv.movie_id in ('68718','293660','550','1726');
 
 -- My
---//What are the latest movies and their original languages?//
+-- //What are the latest movies and their original languages?//
 SELECT 
     m.movie_id,
     m.title,
@@ -53,7 +53,12 @@ ORDER BY number_of_movies DESC;
 
 -- Bris
 
--- box office failures
+-- 1. box office failures
 SELECT *
 FROM movie
 WHERE revenue <= budget;
+-- 2. get the revenue running total of movie releases over the years up to 2026 (released)
+  SELECT YEAR(release_date) AS yr, SUM(revenue) AS year_revenue
+  FROM movie
+  WHERE release_date <= '2026-06-01'
+  GROUP BY YEAR(release_date)
