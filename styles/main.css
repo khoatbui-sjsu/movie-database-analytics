@@ -85,7 +85,7 @@ hr { border-color: #2a2a3a; }
 
 /* Tab styling */
 .stTabs [data-baseweb="tab-list"] {
-    gap: 4px;
+    gap: 12px;
     border-bottom: 1px solid #2a2a3a;
 }
 .stTabs [data-baseweb="tab"] {
@@ -95,6 +95,8 @@ hr { border-color: #2a2a3a; }
     letter-spacing: 1px;
     font-size: 16px;
     border-radius: 4px 4px 0 0;
+    padding: 0.75rem 1.2rem;
+    margin: 0;
 }
 .stTabs [aria-selected="true"] {
     background: #16161f !important;

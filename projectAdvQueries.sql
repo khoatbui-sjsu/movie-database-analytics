@@ -96,7 +96,8 @@ Before:
 						-> Single-row index lookup on m using PRIMARY (movie_id = mg.movie_id)  (cost=0.952 rows=1) (actual time=0.00369..0.0037 rows=1 loops=1.19e+6)\n'
 */
 -- vote avg based on movie genre
-explain analyze select g.genre_name, AVG(vote_average) as avg_vote
+explain analyze 
+select g.genre_name, AVG(vote_average) as avg_vote
 from movie m
 join movie_genre mg
 on mg.movie_id = m.movie_id
@@ -136,7 +137,7 @@ GROUP BY g.genre_name
 ORDER BY avg_vote DESC;
 
 -- My
---//1.Which movies earned more than the average revenue of movies in the same original language?//
+-- //1.Which movies earned more than the average revenue of movies in the same original language?//
 SELECT
     m.movie_id,
     m.title,
@@ -154,7 +155,7 @@ WHERE m.revenue IS NOT NULL
   )
 ORDER BY l.language_name, m.revenue DESC;
 
---2.Which genres have the longest movies?
+-- 2.Which genres have the longest movies?
 SELECT 
     g.genre_name,
     COUNT(*) AS movie_count,
@@ -168,7 +169,7 @@ GROUP BY g.genre_name
 HAVING movie_count >= 10
 ORDER BY avg_runtime DESC;
 
---3.Which companies earn the most on average?
+-- 3.Which companies earn the most on average?
 SELECT 
     c.company_name,
     COUNT(m.movie_id) AS movie_count,
@@ -182,7 +183,7 @@ HAVING movie_count >= 5
 ORDER BY avg_revenue DESC
 LIMIT 10;
 
---4. What is the best-rated movie each year?
+-- 4. What is the best-rated movie each year?
 WITH ranked_year_movies AS (
     SELECT 
         YEAR(release_date) AS release_year,
@@ -206,7 +207,7 @@ FROM ranked_year_movies
 WHERE rating_rank = 1
 ORDER BY release_year DESC;
 
---5.Which movies are missing budget or revenue?
+-- 5.Which movies are missing budget or revenue?
 SELECT 
     movie_id,
     title,
@@ -222,7 +223,7 @@ ORDER BY release_date DESC
 LIMIT 50;
 
 -- Khoa
---1.Show languages that don't appear in a movie
+-- 1.Show languages that don't appear in a movie
 SELECT *
 FROM language l
 WHERE NOT EXISTS (

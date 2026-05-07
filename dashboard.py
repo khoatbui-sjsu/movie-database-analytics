@@ -1,13 +1,14 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 
 
 # Page config
 st.set_page_config(
-    page_title="TMDB Explorer",
+    page_title="TMDB Database Dashboard",
     page_icon=':chess:',
     layout="wide",
     initial_sidebar_state="expanded",
@@ -26,7 +27,7 @@ load_css("styles/main.css")
 DB_CONFIG = {
     "host": "localhost",
     "user": "root",
-    "password": "password",
+    "password": "101188",
     "database": "TMDBMovie",
 }
 
@@ -136,7 +137,7 @@ with st.sidebar:
     result_limit = st.select_slider("Max Results", [50, 100, 250, 500, 1000], value=250)
 
     st.markdown("---")
-    run = st.button("  Apply Filters", use_container_width=True)
+    run = st.button("  Apply Filters", width='stretch')
 
 
 # Building dynamic query
@@ -184,7 +185,7 @@ def build_movie_query(year_range, selected_genres, selected_lang,
 
 
 # Visuals display
-st.markdown("# TMDB MOVIE EXPLORER")
+st.markdown("# TMDB MOVIE EXPLORER DASHBOARD")
 st.markdown("Explore 1M+ movies from The Movie Database")
 st.markdown("---")
 
@@ -212,8 +213,8 @@ k5.metric("Avg Popularity", f"{df['popularity'].mean():.1f}")
 
 st.markdown("---")
 
-#Tabs
-tab1,  tab3, tab4 = st.tabs(["CHARTS", "GENRES", "LANGUAGES"])
+# Tabs
+tab1, tab3, tab4, tab6, tab8 = st.tabs(["CHARTS", "GENRES", "LANGUAGES", "PRODUCTION", "TRENDS"])
 
 #Tab 1: Charts
 with tab1:
@@ -238,7 +239,7 @@ with tab1:
             xaxis=dict(gridcolor="#1a1a2a"), yaxis=dict(gridcolor="#1a1a2a"),
             margin=dict(l=0, r=0, t=10, b=0),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
     with c2:
         st.markdown("### Rating Distribution")
@@ -252,7 +253,7 @@ with tab1:
             xaxis=dict(gridcolor="#1a1a2a"), yaxis=dict(gridcolor="#1a1a2a"),
             margin=dict(l=0, r=0, t=10, b=0),
         )
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, width='stretch')
 
     c3, c4 = st.columns(2)
 
@@ -270,7 +271,7 @@ with tab1:
             xaxis=dict(gridcolor="#1a1a2a"),
             margin=dict(l=0, r=0, t=10, b=0),
         )
-        st.plotly_chart(fig3, use_container_width=True)
+        st.plotly_chart(fig3, width='stretch')
 
     with c4:
         st.markdown("### Popularity vs Rating")
@@ -288,7 +289,7 @@ with tab1:
             xaxis=dict(gridcolor="#1a1a2a"), yaxis=dict(gridcolor="#1a1a2a"),
             margin=dict(l=0, r=0, t=10, b=0),
         )
-        st.plotly_chart(fig4, use_container_width=True)
+        st.plotly_chart(fig4, width='stretch')
 
 
 # Tab 3: Genre breakdown
@@ -326,7 +327,7 @@ with tab3:
                     yaxis=dict(autorange="reversed"),
                     margin=dict(l=0, r=0, t=10, b=0),
                 )
-                st.plotly_chart(fig_g, use_container_width=True)
+                st.plotly_chart(fig_g, width='stretch')
 
             with gc2:
                 fig_pie = px.pie(
@@ -338,7 +339,7 @@ with tab3:
                     font_color="#e8e0d0",
                     margin=dict(l=0, r=0, t=10, b=0),
                 )
-                st.plotly_chart(fig_pie, use_container_width=True)
+                st.plotly_chart(fig_pie, width='stretch')
 
 # Tab 4: Language buckets
 with tab4:
@@ -373,4 +374,255 @@ with tab4:
             xaxis=dict(gridcolor="#1a1a2a"), yaxis=dict(gridcolor="#1a1a2a"),
             margin=dict(l=0, r=0, t=20, b=0),
         )
-        st.plotly_chart(fig_l, use_container_width=True)
+        st.plotly_chart(fig_l, width='stretch')
+
+with tab6:
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("### Market Share by Production Company")
+        countries_df = query("SELECT country_name FROM country ORDER BY country_name;")
+        selected_country = st.selectbox("Select Country", options=countries_df['country_name'], index=0)
+        top_n_market = st.slider("Show Top N Companies", 5, 20, 10)
+        
+        # Notice the added JOINs and WHERE clause to make the country filter work
+        market_sql = f"""
+            SELECT c.company_name, SUM(m.revenue) AS company_revenue
+            FROM company c
+            JOIN movie_company mc ON c.company_id = mc.company_id
+            JOIN movie m ON mc.movie_id = m.movie_id
+            JOIN movie_country m_loc ON m.movie_id = m_loc.movie_id
+            JOIN country ct ON m_loc.country_id = ct.country_id
+            WHERE m.budget > 1000000
+                AND m.revenue > 0
+                AND YEAR(m.release_date) BETWEEN {year_range[0]} AND {year_range[1]}
+                AND ct.country_name = '{selected_country}'
+            GROUP BY c.company_id, c.company_name
+            ORDER BY company_revenue DESC
+            LIMIT {top_n_market}
+        """
+        
+        df_market = query(market_sql)
+        
+        if not df_market.empty:
+            # Match pie slices to your cinematic theme using a warm gold/orange palette
+            fig_pie = px.pie(
+                df_market, 
+                values='company_revenue', 
+                names='company_name', 
+                title=f"Top {top_n_market} Companies in {selected_country}", 
+                hole=0.4,
+                color_discrete_sequence=px.colors.sequential.YlOrBr[::-1]
+            )
+            
+            # Apply CSS styling directly to Plotly
+            fig_pie.update_layout(
+                paper_bgcolor='#0a0a0f',   
+                plot_bgcolor='#0a0a0f',
+                font=dict(family="DM Sans", color="#e8e0d0"),
+                title=dict(
+                    font=dict(family="Bebas Neue", size=24, color="#f5c518")
+                ),
+                legend=dict(
+                    font=dict(color="#e8e0d0") # Forces the legend text to be light
+                ),
+                margin=dict(t=60, b=20, l=20, r=20)
+            )
+            
+            # Note: use_container_width=True is preferred over width='stretch' in newer Streamlit versions
+            st.plotly_chart(fig_pie, use_container_width=True)
+        
+        else:
+            st.warning(f"No data for {selected_country}")
+
+    with c2:
+        st.markdown("### Market Share by Production Company")
+         
+        with st.sidebar:
+            st.header("Efficiency Filters")
+            min_movies = st.number_input("Minimum Movies Produced", min_value=1, value=6)
+            top_n_roi = st.slider("Show Top N ROI Leaders", 5, 20, 10)
+        
+        # Year Range Slider
+        year_range = st.slider(
+            "Select Year Range",
+            min_value=1950, 
+            max_value=2026, 
+            value=(2000, 2026) # Default range
+        )
+        roi_query = f"""
+        WITH CompanyROI AS (
+            SELECT 
+                c.company_name,
+                COUNT(m.movie_id) AS movie_count,
+                SUM(m.budget) AS total_investment,
+                SUM(m.revenue) AS total_return,
+                (SUM(m.revenue) - SUM(m.budget)) / NULLIF(SUM(m.budget), 0) AS roi_multiplier
+            FROM company c
+            JOIN movie_company mc ON c.company_id = mc.company_id
+            JOIN movie m ON mc.movie_id = m.movie_id
+            WHERE m.budget > 1000000 
+            AND m.revenue > 0
+            AND YEAR(m.release_date) BETWEEN {year_range[0]} AND {year_range[1]}
+            GROUP BY c.company_id, c.company_name
+        )
+        SELECT * FROM CompanyROI 
+        WHERE movie_count >= {min_movies}
+        ORDER BY roi_multiplier DESC 
+        LIMIT {top_n_roi};
+        """
+        df_roi = query(roi_query)
+        
+        if not df_roi.empty:
+            fig_bar = px.bar(
+                df_roi, 
+                x='roi_multiplier', 
+                y='company_name', 
+                orientation='h',
+                title=f"ROI Leaders ({year_range[0]} - {year_range[1]})",
+                color='roi_multiplier',
+                # Swapped Viridis for a cinematic warm palette
+                color_continuous_scale='YlOrBr', 
+                hover_data={'total_investment': ':$,.0f', 'total_return': ':$,.0f'}
+            )
+        
+            # Apply the cinematic theme layout updates
+            fig_bar.update_layout(
+                yaxis={'categoryorder':'total ascending'},
+                paper_bgcolor='#0a0a0f',   
+                plot_bgcolor='#0a0a0f',
+                font=dict(family="DM Sans", color="#e8e0d0"),
+                title=dict(
+                    font=dict(family="Bebas Neue", size=24, color="#f5c518")
+                ),
+                # Style the legend/color bar text
+                coloraxis_colorbar=dict(
+                    title="ROI Multiplier",
+                    title_font=dict(family="DM Sans", size=14, color="#e8e0d0"),
+                    tickfont=dict(color="#e8e0d0")
+                ),
+                margin=dict(t=60, b=20, l=20, r=20)
+            )
+            
+            # Use the modern Streamlit container width parameter
+            st.plotly_chart(fig_bar, use_container_width=True)
+        
+        else:
+            st.warning(f"No companies met the criteria for the years {year_range[0]}-{year_range[1]}.")
+
+with tab8:
+    st.title("📈 Genre Popularity & Momentum")
+    st.write("Analyzing genre trends using 3-year moving averages.")
+    with st.sidebar:
+        st.header("Forecast Settings")
+        all_genres = query("SELECT genre_name FROM genre ORDER BY genre_name")
+        selected_genres = st.multiselect("Select Genres", 
+                                     options=all_genres['genre_name'], 
+                                     default=["Action", "Documentary"])
+
+    if not selected_genres:
+        st.warning("Select a genre to see the trend.")
+        st.stop()
+
+    genre_filter = "', '".join(selected_genres)
+
+    # --- 2. SQL QUERIES ---
+
+    # Query A: Historical 3-Year Smoothed Popularity
+    hist_query = f"""
+    SELECT genre_name, release_year, smoothed_pop
+    FROM (
+        SELECT 
+            g.genre_name,
+            YEAR(m.release_date) AS release_year,
+            AVG(m.popularity) OVER (
+                PARTITION BY g.genre_name ORDER BY YEAR(m.release_date) 
+                ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+            ) AS smoothed_pop
+        FROM genre g
+        JOIN movie_genre mg ON g.genre_id = mg.genre_id
+        JOIN movie m ON mg.movie_id = m.movie_id
+        WHERE m.release_date IS NOT NULL AND g.genre_name IN ('{genre_filter}')
+    ) AS t
+    WHERE release_year >= 2000;
+    """
+
+    # Query B: Linear Regression Forecast for 2027-2028
+    pred_query = f"""
+    WITH HistoricalSmoothed AS (
+        SELECT 
+            g.genre_name, 
+            YEAR(m.release_date) AS release_year,
+            AVG(m.popularity) OVER (
+                PARTITION BY g.genre_name ORDER BY YEAR(m.release_date) 
+                ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+            ) AS smoothed_pop
+        FROM genre g 
+        JOIN movie_genre mg ON g.genre_id = mg.genre_id 
+        JOIN movie m ON mg.movie_id = m.movie_id
+        WHERE m.release_date IS NOT NULL AND g.genre_name IN ('{genre_filter}') AND m.popularity > 1
+    ),
+    Coefficients AS (
+        SELECT 
+            genre_name, 
+            COUNT(*) AS n, 
+            SUM(release_year) AS sum_x, 
+            SUM(smoothed_pop) AS sum_y, 
+            SUM(release_year * smoothed_pop) AS sum_xy, 
+            SUM(release_year * release_year) AS sum_xx
+        FROM HistoricalSmoothed GROUP BY genre_name
+    ),
+    Model AS (
+        SELECT 
+            genre_name, 
+            ((n * sum_xy) - (sum_x * sum_y)) * 1.0 / NULLIF((n * sum_xx) - (sum_x * sum_x), 0) AS slope,
+            (sum_y / n) - (((n * sum_xy) - (sum_x * sum_y)) * 1.0 / NULLIF((n * sum_xx) - (sum_x * sum_x), 0) * (sum_x / n)) AS intercept 
+        FROM Coefficients
+    )
+    SELECT genre_name, 2027 AS year, ROUND(intercept + (slope * 2027), 2) AS popularity FROM Model
+    UNION ALL
+    SELECT genre_name, 2028 AS year, ROUND(intercept + (slope * 2028), 2) AS popularity FROM Model;
+    """
+
+    df_hist = query(hist_query)
+    df_pred = query(pred_query)
+
+    # Standardize Historical Columns
+    df_hist.columns = ['genre_name', 'year', 'popularity']
+
+    # --- 3. LINEAR GRAPH VISUALIZATION ---
+    fig = go.Figure()
+    colors = px.colors.qualitative.Plotly
+
+    for i, genre in enumerate(selected_genres):
+        h_genre = df_hist[df_hist['genre_name'] == genre].sort_values('year')
+        p_genre = df_pred[df_pred['genre_name'] == genre].sort_values('year')
+        color = colors[i % len(colors)]
+
+        if not h_genre.empty:
+            # Plot Historical Line
+            fig.add_trace(go.Scatter(
+                x=h_genre['year'], y=h_genre['popularity'].avg(),
+                name=f"{genre} (Actual)", mode='lines+markers',
+                line=dict(color=color, width=3)
+            ))
+            
+            if not p_genre.empty:
+                # Stitch the forecast to the last actual point
+                bridge_x = [h_genre['year'].iloc[-1]] + p_genre['year'].tolist()
+                bridge_y = [h_genre['popularity'].iloc[-1]] + p_genre['popularity'].tolist()
+                
+                # Plot Forecast Line
+                fig.add_trace(go.Scatter(
+                    x=bridge_x, y=bridge_y,
+                    name=f"{genre} (Forecast)", mode='lines',
+                    line=dict(color=color, width=3, dash='dash'),
+                    showlegend=False
+                ))
+
+    fig.update_layout(
+        title="<b>Genre Momentum: Historical Trends & 24-Month Prediction</b>",
+        xaxis_title="Year", yaxis_title="Avg Popularity",
+        hovermode="x unified", template="plotly_white"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
