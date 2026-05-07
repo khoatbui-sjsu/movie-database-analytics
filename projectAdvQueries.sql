@@ -149,7 +149,7 @@ GROUP BY original_language_code) as lang_avg
 	ON m.original_language_code = lang_avg.original_language_code
 WHERE m.revenue > lang_avg.avg_lang_revenue;
 
--- 2.Which genres have the longest movies?
+-- 2.Which genres have longest runtime?
 SELECT g.genre_name, COUNT(*) AS movie_count,
 AVG(m.runtime) AS avg_runtime
 FROM movie m
